@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Package centré sur le preprocessing d'un jeu de données.
+"""Module centré sur le preprocessing d'un jeu de données.
 Bien que basé sur un projet d'analyse de données spécifique (OpenFoodFacts),
 le contenu a pour vocation d'être générique."""
 import math
