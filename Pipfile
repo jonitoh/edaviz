@@ -5,12 +5,14 @@ verify_ssl = true
 
 [dev-packages]
 pylint = "*"
+autopep8 = "*"
 
 [packages]
 numpy = "*"
 pandas = "*"
 matplotlib = "*"
 seaborn = "*"
+scipy = "*"
 
 [requires]
 python_version = "3.8"
