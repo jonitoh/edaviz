@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 
 
-def eliminer_colonne_vide(tableau, taux=0.50, retourner_details=True, chemin_fichier='barh_classement_colonnes_vides.png'):
+def eliminer_colonne_vide(tableau, taux_de_vide_minimum=0.50, retourner_details=True, chemin_fichier='barh_classement_colonnes_vides.png'):
     """Supprimer les colonnes avec un taux de remplissage inférieur à une référence donnée.
     
     Arguments d'entrée:
         tableau (pandas.DataFrame)
-        taux (float)
+        taux_de_vide_minimum (float): au delà de ce taux, la colonne sera considérée vide
         retourner_details (bool): si True, renvoie le classement des colonnes
             sur leurs taux de remplissage.
     
@@ -24,21 +24,41 @@ def eliminer_colonne_vide(tableau, taux=0.50, retourner_details=True, chemin_fic
     """
     classement = pd.DataFrame()
     classement['colonne'] = list(tableau)
-    classement['taux_de_remplissage'] = (
+    classement['taux_de_vide'] = (
         classement['colonne']
-        .apply(lambda colonne: 1 - tableau[colonne].isna().mean())
+        .apply(lambda colonne: tableau[colonne].isna().mean())
     )
-    classement = classement.sort_values('taux_de_remplissage', ascending=False)
+    classement = classement.sort_values('taux_de_vide', ascending=False)
+    print("clst df:\n ", classement)
     
-    colonnes_a_eliminer = classement.loc[classement['taux_de_remplissage']>(1-taux), 'colonne']
+    colonnes_a_eliminer = classement.loc[classement['taux_de_vide']>=taux_de_vide_minimum, 'colonne']
     tableau_nettoye = tableau.drop(columns=colonnes_a_eliminer)
 
     if retourner_details:
-        (classement
-        .plot(kind='barh')
+        # Initialise plot
+        ax = classement.set_index('colonne').plot(kind='barh', figsize=(8, 10), color='#86bf91', zorder=2, width=0.85)
+
+        # Despine -- remove figure's borders
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+        # Set x-axis
+        ax.set_xlabel("Ratio d'éléments vides", labelpad=20, weight='bold', size=12)
+        # il faudra voir
+
+        # Set y-axis
+        ax.set_ylabel("Colonnes", labelpad=20, weight='bold', size=12)
+
+        # Add a legend
+        ax.legend(ncol=2, loc="upper right")
+
+
+        # Save figure
+        (ax
         .get_figure()
-        .savefig(chemin_fichier)
+        .savefig(chemin_fichier, bbox_inches="tight")
         )
+
         return tableau_nettoye, classement
     
     return tableau_nettoye

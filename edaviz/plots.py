@@ -115,3 +115,19 @@ def dessiner_graphique_donut(tableau, colonne, fichier, valeur_manquante='valeur
     plt.axis('equal')
     plt.gcf().savefig(fichier, bbox_inches="tight")
     plt.close()
+
+
+
+#f, ax = plt.subplots(figsize=(22,5))
+#cols = [x for x in df]
+#idx = cols.index('nutrition-score-fr_100g')
+#sns.heatmap(corr_mat[idx, :].reshape(1, -1),
+#            yticklabels='',
+#            xticklabels=cols, square=True, linewidths=1, linecolor='white',
+#            cbar=True, cbar_kws={"shrink": .45},
+#            annot=True, fmt='.3f',
+#            cmap="BuPu"
+#           );
+#plt.title("Corrélation de la variable 'nutrition-score-fr_100g'");
+#plt.gcf().savefig('graphs/my_heatmap_score_first.png', bbox_inches="tight")
+

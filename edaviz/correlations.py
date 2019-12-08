@@ -1,5 +1,9 @@
 # coding: utf-8
-"""Functions permettant de calculer les différentes corrélations entre les variables d'un même jeu de données."""
+"""
+    Functions permettant de calculer les différentes corrélations
+    entre les variables d'un même jeu de données.
+    Chaque vecteur de variables est un NumPy.array. 
+"""
 import math
 import time
 from enum import Enum
@@ -39,7 +43,7 @@ class EnumManager(Enum):
         return name
 
 
-class Attributs(EnumManager):
+class Nature(EnumManager):
     """Enumerations of allowed data types."""
     BINARY = "Binary"
     CATEGORY = "Category"
@@ -47,25 +51,21 @@ class Attributs(EnumManager):
     DATETIME = "Datetime"
 
 
-def donner_type(variable, seuil_categorie=SEUIL_CATEGORY_PAR_DEFAUT, is_numpy_array=True):
+def donner_type(variable, seuil_categorie=SEUIL_CATEGORY_PAR_DEFAUT):
     """Déterminer le type d'une variable."""
     nombre_de_valeurs_distinctes = len(set(variable))
     
-    type_variable_categorie = False
-    type_variable_datetime = False
-
-    if is_numpy_array:
-        type_variable_categorie = variable.dtype == 'object'
-        type_variable_datetime = variable.dtype == datetime64
+    type_variable_categorie = variable.dtype == 'object'
+    type_variable_datetime = variable.dtype == datetime64
 
     if nombre_de_valeurs_distinctes == 2:
-        return Attributs.BINARY
+        return Nature.BINARY
     elif nombre_de_valeurs_distinctes < seuil_categorie or type_variable_categorie:
-        return Attributs.CATEGORY
+        return Nature.CATEGORY
     elif type_variable_datetime:
-        return Attributs.DATETIME
+        return Nature.DATETIME
     else:
-        return Attributs.NUMBER
+        return Nature.NUMBER
 
 
 def calculer_covariance(variable_1, variable_2):
@@ -130,7 +130,7 @@ def test_correlation_eta_squared(variable_quantitative, variable_qualitative):
         coefficient (float)
     """
     # On supprime les valeurs nulles si nécessaire
-    is_null = lambda variable: variable in [ None, '' ] or str(variable) == 'nan'
+    is_null = lambda variable: variable in [ None, '' ] or str(variable).lower() == 'nan'
     is_null = np.vectorize(is_null)
     variable_qualitative = variable_qualitative.astype(str)
     condition = np.where(~np.isnan(variable_quantitative) & ~np.isnan(is_null(variable_qualitative)))
@@ -220,7 +220,7 @@ def test_correlation_chi_squared(variable_1, variable_2, contingence=None):
     return statistique, p_value, coefficient
 
 
-def test_de_correlation(variable_1, variable_2, is_numpy_array_1=True, is_numpy_array_2=True, *args, **kwargs):
+def test_de_correlation(variable_1, variable_2, *args, **kwargs):
     """Pour calculer la correlation variables.
     
     Arguments d'entrée:
@@ -229,28 +229,27 @@ def test_de_correlation(variable_1, variable_2, is_numpy_array_1=True, is_numpy_
     Arguments de sortie:
         statistique, p_value (float or bool)
     """
-    variable_1_type = donner_type(variable=variable_1, is_numpy_array=is_numpy_array_1)
-    variable_2_type = donner_type(variable=variable_2, is_numpy_array=is_numpy_array_2)
+    variable_1_type = donner_type(variable=variable_1)
+    variable_2_type = donner_type(variable=variable_2)
 
-    if (variable_1_type, variable_2_type) == (Attributs.NUMBER, Attributs.NUMBER):
+    if (variable_1_type, variable_2_type) == (Nature.NUMBER, Nature.NUMBER):
         covariance = kwargs.get('covariance', None)
         return test_correlation_pearson(variable_1, variable_2, covariance)
-    elif variable_1_type == Attributs.NUMBER:
+    elif variable_1_type == Nature.NUMBER:
         return test_correlation_eta_squared(variable_1, variable_2)
-    elif variable_2_type == Attributs.NUMBER:
+    elif variable_2_type == Nature.NUMBER:
         return test_correlation_eta_squared(variable_2, variable_1)
     else:
         contingence = kwargs.get('contingence', None)
         return test_correlation_chi_squared(variable_1, variable_2, contingence)
 
 
-def matrice_de_correlation(tableau, format_compact=True, is_numpy_array=True, calculer_autocorrelation=False, *args, **kwargs):
+def matrice_de_correlation(tableau, format_compact=True, calculer_autocorrelation=False, *args, **kwargs):
     """Pour calculer la matrice de correlation d'un jeu de données.
     
     Arguments d'entrée:
         tableau (Pandas.DataFrame)
         format_compact (bool): Si Vrai, matrice de triplet sinon trois matrices en sortie
-        is_numpy_array (bool) #TO DO remove
 
     Arguments de sortie:
         correlation or correlation_statistique, correlation_p_value, correlation_coefficient (NumPy.array)
@@ -266,8 +265,6 @@ def matrice_de_correlation(tableau, format_compact=True, is_numpy_array=True, ca
             else:
                 triplet = test_de_correlation(tableau[variable_1].values,
                                             tableau[variable_2].values,
-                                            is_numpy_array_1=is_numpy_array,
-                                            is_numpy_array_2=is_numpy_array,
                                             *args,
                                             **kwargs)
             correlation_pour_variable_1.append(triplet)
@@ -277,8 +274,10 @@ def matrice_de_correlation(tableau, format_compact=True, is_numpy_array=True, ca
         correlation = np.array(correlation)
         return correlation
     else:
-        correlation_statistique = [ list(map(lambda tupl: tupl[0], ligne)) for ligne in correlation ]
-        correlation_p_value = [ list(map(lambda tupl: tupl[1], ligne)) for ligne in correlation ]
-        correlation_coefficient = [ list(map(lambda tupl: tupl[2], ligne)) for ligne in correlation ]
+        correlation_statistique = np.array([ list(map(lambda tupl: tupl[0], ligne)) for ligne in correlation ])
+        correlation_p_value = np.array([ list(map(lambda tupl: tupl[1], ligne)) for ligne in correlation ])
+        correlation_coefficient = np.array([ list(map(lambda tupl: tupl[2], ligne)) for ligne in correlation ])
         
         return correlation_statistique, correlation_p_value, correlation_coefficient
+
+
