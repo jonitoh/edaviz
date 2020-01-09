@@ -3,39 +3,44 @@
     It is a custom version of a Heatmap allowing
     cells size's customization.
     It is based on matrix.py in https://github.com/mwaskom/seaborn
-    by Michael L. Waskom
-    ( commit id: https://github.com/mwaskom/seaborn/pull/1830 )
+    ( commit 065d3c1 ) by Michael L. Waskom .
 """
 
 from __future__ import division
-import itertools
-import datetime
+#import itertools
+import functools
+#import datetime
+import numbers
+import operator
 
 import matplotlib as mpl
-from matplotlib.collections import LineCollection
+#from matplotlib.collections import LineCollection
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
-import matplotlib.patheffects as patheffects
+#from matplotlib import gridspec
+#import matplotlib.patheffects as patheffects
 import numpy as np
 import pandas as pd
-from scipy.cluster import hierarchy
+#from scipy.cluster import hierarchy
 
 import seaborn as sns
 from seaborn import cm
-from seaborn.axisgrid import Grid
+#from seaborn.axisgrid import Grid
 from seaborn.utils import (
     despine, axis_ticklabels_overlap, relative_luminance, to_utf8)
 from seaborn.external.six import string_types
 
+__all__  = [ 'custom_cells_heatmap' ]
 
-__all__ = ['afficher_heatmap', 'afficher_hetmap_avec_cellules_variables']
+
+def _replace_bool(value):
+    """NEW-- Custom function to replace boolean values"""
+    if not isinstance(value, bool):
+        return value
+    return 1.0 if value else 0.0
 
 
 def _index_to_label(index):
-    """
-        (Unchanged funtions)
-        Convert a pandas index or multiindex to an axis label.
-    """
+    """Convert a pandas index or multiindex to an axis label."""
     if isinstance(index, pd.MultiIndex):
         return "-".join(map(to_utf8, index.names))
     else:
@@ -43,10 +48,7 @@ def _index_to_label(index):
 
 
 def _index_to_ticklabels(index):
-    """
-        (Unchanged funtions)
-        Convert a pandas index or multiindex into ticklabels.
-    """
+    """Convert a pandas index or multiindex into ticklabels."""
     if isinstance(index, pd.MultiIndex):
         return ["-".join(map(to_utf8, i)) for i in index.values]
     else:
@@ -54,10 +56,7 @@ def _index_to_ticklabels(index):
 
 
 def _convert_colors(colors):
-    """
-        (Unchanged funtions)
-        Convert either a list of colors or nested lists of colors to RGB.
-    """
+    """Convert either a list of colors or nested lists of colors to RGB."""
     to_rgb = mpl.colors.colorConverter.to_rgb
 
     if isinstance(colors, pd.DataFrame):
@@ -78,7 +77,6 @@ def _convert_colors(colors):
 
 def _matrix_mask(data, mask):
     """
-        (Unchanged funtions)
         Ensure that data and mask are compatible and add missing values.
         Values will be plotted for cells where ``mask`` is ``False``.
         ``data`` is expected to be a DataFrame; ``mask`` can be an array or
@@ -113,7 +111,7 @@ def _matrix_mask(data, mask):
 
 
 def _normalize_cell_size(size, size_min, size_max, size_true, size_false, size_nan):
-    """ """
+    """NEW--"""
     if isinstance(size, bool):
         return size_true if size else size_false
     elif np.isnan(size):
@@ -126,20 +124,20 @@ def _normalize_cell_size(size, size_min, size_max, size_true, size_false, size_n
         return size
 
 
-class _CustomisedCellHeatMapper(object):
-    """Custom version of _HeatMapper adding the control of the cell size."""
+class _CustomCellHeatMapper(object):
+    """NEW--Custom version of _HeatMapper adding the control of the cell size."""
 
     DEFAULT_VMIN_CELLS = .1
     DEFAULT_VMAX_CELLS = 1
 
     def __init__(self, data, vmin, vmax, cmap, center, robust, annot, fmt,
                  annot_kws, cbar, cbar_kws, shape_kws,
-                 data_cells, vmin_cells, vmax_cells, robust_cells,
-                 xticklabels=True, yticklabels=True, mask=None, normalize_cells=True,
-                 square_shaped_cells=True):
+                 data_cells, vmin_cells, vmax_cells, robust_cells, robust_type='percentile',
+                 xticklabels=True, yticklabels=True, mask=None, normalize_cells=True):
         """
             Initialize the plotting object.
         """
+        # NEW-- PLOT_DATA
         # We always want to have a DataFrame with semantic information
         # and an ndarray to pass to matplotlib
         if isinstance(data, pd.DataFrame):
@@ -147,6 +145,7 @@ class _CustomisedCellHeatMapper(object):
         else:
             plot_data = np.asarray(data)
             data = pd.DataFrame(plot_data)
+
 
         # We always want to have a DataFrame with semantic information
         # and an ndarray to pass to matplotlib
@@ -161,11 +160,14 @@ class _CustomisedCellHeatMapper(object):
             plot_cells = np.asarray(data_cells)
             data_cells = pd.DataFrame(plot_cells)
 
+        
+        # NEW-- PLOT_CELLS
         # Validate the mask and convert to DataFrame
         mask = _matrix_mask(data, mask)
 
         plot_data = np.ma.masked_where(np.asarray(mask), plot_data)
         plot_cells = np.ma.masked_where(np.asarray(mask), plot_cells)
+
 
         # Get good names for the rows and columns
         xtickevery = 1
@@ -219,10 +221,10 @@ class _CustomisedCellHeatMapper(object):
         self._determine_cmap_params(plot_data, vmin, vmax,
                                     cmap, center, robust)
 
-        # Determine good default values for the sizemapping
+        # Determine good default values for the sizemapping according to a feature
         self._determine_cells_params(plot_cells, vmin_cells,
                                      vmax_cells, robust_cells,
-                                     normalize_cells, square_shaped_cells)
+                                     robust_type, normalize_cells)
 
         # Sort out the annotations
         if annot is None:
@@ -247,6 +249,7 @@ class _CustomisedCellHeatMapper(object):
         self.data = data
         self.plot_data = plot_data
 
+        # NEW-- Save other attributes to the object
         self.data_cells = data_cells
         self.plot_cells = plot_cells
 
@@ -258,6 +261,7 @@ class _CustomisedCellHeatMapper(object):
         self.cbar = cbar
         self.cbar_kws = {} if cbar_kws is None else cbar_kws
         self.cbar_kws.setdefault('ticks', mpl.ticker.MaxNLocator(6))
+        # NEW-- 
         self.shape_kws = {} if shape_kws is None else shape_kws
 
     def _determine_cmap_params(self, plot_data, vmin, vmax,
@@ -291,88 +295,84 @@ class _CustomisedCellHeatMapper(object):
             cc = np.linspace(cmin, cmax, 256)
             self.cmap = mpl.colors.ListedColormap(self.cmap(cc))
 
-    def _determine_cells_params(self, plot_cells, vmin_cells, vmax_cells, robust_cells, normalize_cells):
-        """Use some heuristics to set good defaults for colorbar and range."""
-        # ( NEW )
-        if plot_cells is None:
-            self.plot_cells = np.ones(plot_cells.shape)
-            self.vmax_cells, self.vmin_cells = self.DEFAULT_VMAX_CELLS, self.DEFAULT_VMIN_CELLS
-        else:
-            # Handle incorrect types (only accepted or np.bool and np.numeric)
-            type_cells = plot_cells.applymap(type)
-            available_types = set(type_cells.values.flatten())
+    def _determine_cells_params(self, plot_cells, vmin_cells, vmax_cells, robust_cells, robust_type, normalize_cells):
+        """ NEW-- Use some heuristics to set good defaults for cells' size."""
+        # Handle unknown robust methods
+        if robust_type not in [ 'percentile', 'boundary' ] and robust_cells:
+            raise ValueError(f"Incorrect robust_type: {robust_type} instead of 'percentile' or 'boundary.")
 
-            invalid_types = [
-                ctype for ctype in available_types if not isinstance(ctype, (bool, float))]
+        # Handle incorrect types (only accepted or np.bool and np.numeric)
+        type_cells = [ list(map(type,l)) for l in plot_cells ]
+        available_types = functools.reduce(operator.xor, map(set, type_cells))
+        invalid_types = [ _type for _type in available_types if not issubclass(_type, (bool, numbers.Number)) ]
 
-            if invalid_types:
-                raise TypeError(f"Incorrect types: {invalid_types} ")
+        if invalid_types:
+            raise TypeError(f"Incorrect types: {invalid_types}.")
 
-            # Format into a unique type with the right imputation
-            plot_cells = plot_cells.replace({True: 1.0, False: 0})
+        calc_cells = plot_cells.data[~(np.isnan(plot_cells.data))]
 
-            # Normalize the the range of values
-            calc_cells = plot_cells.data[~np.isnan(plot_cells.data)]
+        # Compute vmin_cells and vmax_cells according the method
+        robust_vmax_cells, robust_vmin_cells = None, None 
+        if robust_cells:
+            if robust_type == 'percentile':
+                robust_vmax_cells = np.percentile(calc_cells, 5)
+                robust_vmin_cells = np.percentile(calc_cells, 95)
+            
+            if robust_type == 'boundary':
+                robust_vmax_cells = calc_cells.min()
+                robust_vmin_cells = calc_cells.max()
+        
+        self.vmax_cells = robust_vmax_cells or self.DEFAULT_VMAX_CELLS
+        self.vmin_cells = robust_vmin_cells or self.DEFAULT_VMIN_CELLS
 
-            if vmin_cells is None:
-                vmin_cells = 0
-            if vmax_cells is None:
-                vmax_cells = 1.0
+        # Normalize the values and format into a unique type with the right imputation
+        normalize = lambda x: _normalize_cell_size(
+                                         size=x,
+                                         size_min=self.vmin_cells,
+                                         size_max=self.vmax_cells,
+                                         size_true=self.vmax_cells,
+                                         size_false=self.vmin_cells,
+                                         size_nan=0.0
+                                        )                             
 
-            robust_vmin_cells = np.percentile(
-                calc_cells, 5) if robust else calc_cells.min()
-            robust_vmax_cells = np.percentile(
-                calc_cells, 95) if robust else calc_cells.max()
+        plot_cells = np.ma.masked_array(data=[ list(map(normalize, l)) for l in plot_cells.data ],
+                                        mask=plot_cells.mask)
 
-            if robust_vmin_cells == 0:
-                robust_vmin_cells = self.DEFAULT_VMIN_CELLS
-
-            # Normalize the values
-            plot_cells = plot_cells.applymap(_normalize_cell_size,
-                                             vmin=robust_vmin_cells,
-                                             vmax=robust_vmax_cells,
-                                             true_value=robust_vmax_cells,
-                                             false_value=robust_vmin_cells,
-                                             nan_value=0.0
-                                             )
-
-            # Store the values
-            self.plot_cells = plot_cells
-            self.vmax_cells = robust_vmax_cells
-            self. vmin_cells = robust_vmin_cells
+        # Store the values
+        self.plot_cells = plot_cells
 
     def _annotate_and_size_cells(self, ax, mesh, square_shaped_cells):
         """Add textual labels with the value in each cell."""
         # ( MODIFY: former _annotate_heatmap )
         mesh.update_scalarmappable()
-        height, width = self.annot_data.shape
+        annot_data = self.annot_data or np.full(self.plot_data.shape, np.nan)
+        height, width = self.plot_data.shape
         xpos, ypos = np.meshgrid(np.arange(width) + .5, np.arange(height) + .5)
-        for x, y, m, color, val, cell_size in zip(xpos.flat, ypos.flat,
+        for x, y, m, color, annotation, cell_size in zip(xpos.flat, ypos.flat,
                                                   mesh.get_array(), mesh.get_facecolors(),
-                                                  self.annot_data.flat, self.plot_cells.flat):
+                                                  annot_data.flat, self.plot_cells.flat):
             if m is not np.ma.masked:
-                # vv = (val - self.vmin) / (self.vmax - self.vmin)# done
-                # size = np.clip(s / self.cellsize_vmax, 0.1, 1.0)
+                size = np.clip ( cell_size / self.vmax_cells, 0.1, 1.0)
                 shape = None
                 if square_shaped_cells:
-                    shape = plt.Rectangle((x - cell_size / 2, y - cell_size / 2),
-                                          cell_size,
-                                          cell_size,
+                    shape = plt.Rectangle((x - size / 2, y - size / 2),
+                                          size,
+                                          size,
                                           facecolor=color,
                                           **self.shape_kws)
                 else:
-                    shape = plt.Circle((x - cell_size / 2, y - cell_size / 2),
-                                       cell_size,
+                    shape = plt.Circle((x - size / 2, y - size / 2),
+                                       size,
                                        facecolor=color,
                                        fill=True,
                                        **self.shape_kws)
 
                 ax.add_patch(shape)
 
-                if self.annot:
+                if self.annot and not np.isnan(annotation):
                     lum = relative_luminance(color)
                     text_color = ".15" if lum > .408 else "w"
-                    annotation = ("{:" + self.fmt + "}").format(val)
+                    annotation = ("{:" + self.fmt + "}").format(annotation)
                     text_kwargs = dict(
                         color=text_color, ha="center", va="center")
                     text_kwargs.update(self.annot_kws)
@@ -410,15 +410,16 @@ class _CustomisedCellHeatMapper(object):
     def _plot_custom_pcolormesh(self, ax, **kwargs):
         """ """
         mesh = ax.pcolormesh(self.plot_data, vmin=self.vmin, vmax=self.vmax,
-                             cmap=self.cmap, **kws)
+                             cmap=self.cmap, **kwargs)
         pass
 
-    def plot(self, ax, cax, kws):
+    def plot(self, ax, cax, square_shaped_cells, kws=None):
         """Draw the heatmap on the provided Axes."""
         # Remove all the Axes spines
         despine(ax=ax, left=True, bottom=True)
 
         # Draw the heatmap
+        kws = {} if kws is None else kws
         # mesh = self._plot_custom_pcolormesh(ax, **kws)
         mesh = ax.pcolormesh(self.plot_data, vmin=self.vmin, vmax=self.vmax,
                              cmap=self.cmap, **kws)
@@ -465,10 +466,217 @@ class _CustomisedCellHeatMapper(object):
         ax.set(xlabel=self.xlabel, ylabel=self.ylabel)
 
         # Annotate the cells with the formatted values
-        self._annotate_and_size_cells(ax, mesh)
+        self._annotate_and_size_cells(ax, mesh, square_shaped_cells)
 
 
-def customised_cells_heatmap(data, vmin=None, vmax=None, cmap=None, center=None, robust=False,
+def custom_cells_heatmap(data, vmin=None, vmax=None, cmap=None, center=None, robust=False,
+                        annot=None, fmt=".2g", annot_kws=None,
+                        linewidths=0, linecolor="white",
+                        cbar=True, cbar_kws=None, cbar_ax=None,
+                        square=False, xticklabels="auto", yticklabels="auto",
+                        mask=None, ax=None, data_cells=None, robust_cells=True,
+                        vmin_cells=None, vmax_cells=None, ax_kws=None,
+                        shape_kws=None, normalize_cells=True,
+                        square_shaped_cells=True**kwargs):
+                        callable(self, data, vmin, vmax, cmap, center, robust, annot, fmt,
+                 annot_kws, cbar, cbar_kws, shape_kws,
+                 data_cells, vmin_cells, vmax_cells, robust_cells, robust_type='percentile',
+                 xticklabels=True, yticklabels=True, mask=None, normalize_cells=True)
+    """Plot rectangular data as a color-encoded matrix.
+
+    This is an Axes-level function and will draw the heatmap into the
+    currently-active Axes if none is provided to the ``ax`` argument.  Part of
+    this Axes space will be taken and used to plot a colormap, unless ``cbar``
+    is False or a separate Axes is provided to ``cbar_ax``.
+
+    Parameters
+    ----------
+    data : rectangular dataset
+        2D dataset that can be coerced into an ndarray. If a Pandas DataFrame
+        is provided, the index/column information will be used to label the
+        columns and rows.
+    vmin, vmax : floats, optional
+        Values to anchor the colormap, otherwise they are inferred from the
+        data and other keyword arguments.
+    cmap : matplotlib colormap name or object, or list of colors, optional
+        The mapping from data values to color space. If not provided, the
+        default will depend on whether ``center`` is set.
+    center : float, optional
+        The value at which to center the colormap when plotting divergant data.
+        Using this parameter will change the default ``cmap`` if none is
+        specified.
+    robust : bool, optional
+        If True and ``vmin`` or ``vmax`` are absent, the colormap range is
+        computed with robust quantiles instead of the extreme values.
+    annot : bool or rectangular dataset, optional
+        If True, write the data value in each cell. If an array-like with the
+        same shape as ``data``, then use this to annotate the heatmap instead
+        of the raw data.
+    fmt : string, optional
+        String formatting code to use when adding annotations.
+    annot_kws : dict of key, value mappings, optional
+        Keyword arguments for ``ax.text`` when ``annot`` is True.
+    linewidths : float, optional
+        Width of the lines that will divide each cell.
+    linecolor : color, optional
+        Color of the lines that will divide each cell.
+    cbar : boolean, optional
+        Whether to draw a colorbar.
+    cbar_kws : dict of key, value mappings, optional
+        Keyword arguments for `fig.colorbar`.
+    cbar_ax : matplotlib Axes, optional
+        Axes in which to draw the colorbar, otherwise take space from the
+        main Axes.
+    square : boolean, optional
+        If True, set the Axes aspect to "equal" so each cell will be
+        square-shaped.
+    xticklabels, yticklabels : "auto", bool, list-like, or int, optional
+        If True, plot the column names of the dataframe. If False, don't plot
+        the column names. If list-like, plot these alternate labels as the
+        xticklabels. If an integer, use the column names but plot only every
+        n label. If "auto", try to densely plot non-overlapping labels.
+    mask : boolean array or DataFrame, optional
+        If passed, data will not be shown in cells where ``mask`` is True.
+        Cells with missing values are automatically masked.
+    ax : matplotlib Axes, optional
+        Axes in which to draw the plot, otherwise use the currently-active
+        Axes.
+    kwargs : other keyword arguments
+        All other keyword arguments are passed to ``ax.pcolormesh``.
+
+    Returns
+    -------
+    ax : matplotlib Axes
+        Axes object with the heatmap.
+
+    See also
+    --------
+    clustermap : Plot a matrix using hierachical clustering to arrange the
+                 rows and columns.
+
+    Examples
+    --------
+
+    Plot a heatmap for a numpy array:
+
+    .. plot::
+        :context: close-figs
+
+        >>> import numpy as np; np.random.seed(0)
+        >>> import seaborn as sns; sns.set()
+        >>> uniform_data = np.random.rand(10, 12)
+        >>> ax = sns.heatmap(uniform_data)
+
+    Change the limits of the colormap:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(uniform_data, vmin=0, vmax=1)
+
+    Plot a heatmap for data centered on 0 with a diverging colormap:
+
+    .. plot::
+        :context: close-figs
+
+        >>> normal_data = np.random.randn(10, 12)
+        >>> ax = sns.heatmap(normal_data, center=0)
+
+    Plot a dataframe with meaningful row and column labels:
+
+    .. plot::
+        :context: close-figs
+
+        >>> flights = sns.load_dataset("flights")
+        >>> flights = flights.pivot("month", "year", "passengers")
+        >>> ax = sns.heatmap(flights)
+
+    Annotate each cell with the numeric value using integer formatting:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(flights, annot=True, fmt="d")
+
+    Add lines between each cell:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(flights, linewidths=.5)
+
+    Use a different colormap:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(flights, cmap="YlGnBu")
+
+    Center the colormap at a specific value:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(flights, center=flights.loc["January", 1955])
+
+    Plot every other column label and don't plot row labels:
+
+    .. plot::
+        :context: close-figs
+
+        >>> data = np.random.randn(50, 20)
+        >>> ax = sns.heatmap(data, xticklabels=2, yticklabels=False)
+
+    Don't draw a colorbar:
+
+    .. plot::
+        :context: close-figs
+
+        >>> ax = sns.heatmap(flights, cbar=False)
+
+    Use different axes for the colorbar:
+
+    .. plot::
+        :context: close-figs
+
+        >>> grid_kws = {"height_ratios": (.9, .05), "hspace": .3}
+        >>> f, (ax, cbar_ax) = plt.subplots(2, gridspec_kw=grid_kws)
+        >>> ax = sns.heatmap(flights, ax=ax,
+        ...                  cbar_ax=cbar_ax,
+        ...                  cbar_kws={"orientation": "horizontal"})
+
+    Use a mask to plot only part of a matrix
+
+    .. plot::
+        :context: close-figs
+
+        >>> corr = np.corrcoef(np.random.randn(10, 200))
+        >>> mask = np.zeros_like(corr)
+        >>> mask[np.triu_indices_from(mask)] = True
+        >>> with sns.axes_style("white"):
+        ...     ax = sns.heatmap(corr, mask=mask, vmax=.3, square=True)
+
+
+    """
+    # Initialize the plotter object
+    plotter = _HeatMapper(data, vmin, vmax, cmap, center, robust, annot, fmt,
+                          annot_kws, cbar, cbar_kws, xticklabels,
+                          yticklabels, mask)
+
+    # Add the pcolormesh kwargs here
+    kwargs["linewidths"] = linewidths
+    kwargs["edgecolor"] = linecolor
+
+    # Draw the plot and return the Axes
+    if ax is None:
+        ax = plt.gca()
+    if square:
+        ax.set_aspect("equal")
+    plotter.plot(ax, cbar_ax, kwargs)
+    return ax
+
+
+def custom_cells_heatmap(data, vmin=None, vmax=None, cmap=None, center=None, robust=False,
                              annot=None, fmt=".2g", annot_kws=None,
                              cbar=True, cbar_kws=None, cbar_ax=None,
                              data_cells=None, robust_cells=True,
@@ -478,13 +686,13 @@ def customised_cells_heatmap(data, vmin=None, vmax=None, cmap=None, center=None,
                              normalize_cells=True, square_shaped_cells=True):
 
     # Initialize the plotter object
-    plotter = _CustomisedCellHeatMapper(data, vmin, vmax,
-                                        cmap, center, robust,
-                                        annot, fmt, annot_kws,
-                                        cbar, cbar_kws, shape_kws,
-                                        data_cells, vmin_cells, vmax_cells,
-                                        robust_cells, xticklabels, yticklabels, mask, normalize_cells,
-                                        square_shaped_cells)
+    plotter = _CustomCellHeatMapper(data, vmin, vmax,
+                                    cmap, center, robust,
+                                    annot, fmt, annot_kws,
+                                    cbar, cbar_kws, shape_kws,
+                                    data_cells, vmin_cells, vmax_cells,
+                                    robust_cells, xticklabels, yticklabels, mask, normalize_cells
+                                    )
 
     # Draw the plot and return the Axes
     if ax is None:
@@ -495,5 +703,6 @@ def customised_cells_heatmap(data, vmin=None, vmax=None, cmap=None, center=None,
     # delete grid
     ax.grid(False)
 
-    plotter.plot(ax, cbar_ax)
+    plotter.plot(ax, cbar_ax, square_shaped_cells, ax_kws)
+
     return ax
